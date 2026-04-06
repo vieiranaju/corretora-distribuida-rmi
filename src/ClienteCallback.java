@@ -2,12 +2,17 @@ import java.rmi.Remote;
 import java.rmi.RemoteException;
 
 /**
- * Interface do observador (padrão Observer).
- * Implementada pelo cliente — o servidor chama este método
- * para notificar mudanças de preço em tempo real.
+ * Interface de Callback do Cliente (padrão Observer).
+ * O servidor usa essa interface para notificar os clientes sobre mudanças de preço.
+ * O cliente também precisa ser um objeto remoto!
  */
 public interface ClienteCallback extends Remote {
 
-    /** Chamado pelo servidor quando o valor de um ativo é alterado. */
-    void notificar(String nome, double novoValor) throws RemoteException;
+    /**
+     * Chamado pelo servidor quando o preço de um ativo muda.
+     *
+     * @param nomeAtivo  nome do ativo que mudou
+     * @param novoValor  novo valor do ativo
+     */
+    void notificarMudancaPreco(String nomeAtivo, double novoValor) throws RemoteException;
 }

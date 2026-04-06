@@ -1,70 +1,38 @@
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Ponto de entrada do Servidor da Corretora.
- *
- * - Registra o serviço no RMI Registry (porta 1099)
- * - Pré-cadastra ativos com preços reais de cripto via CoinGecko
- * - Atualiza preços de cripto automaticamente a cada 30 segundos
+ * Ponto de entrada do Servidor RMI da Corretora.
+ * Cria o registro RMI e publica o objeto remoto.
  */
 public class Servidor {
 
-    private static final int    PORTA        = 1099;
-    private static final String NOME_SERVICO = "CorretorService";
-
     public static void main(String[] args) {
         try {
-            CorretorImpl corretora = new CorretorImpl();
-            CoinGeckoService coinGecko = new CoinGeckoService();
+            // 1. Cria a implementação da Corretora
+            CorretorImpl corretor = new CorretorImpl();
 
-            Registry registry = LocateRegistry.createRegistry(PORTA);
-            registry.rebind(NOME_SERVICO, corretora);
+            // 2. Cadastra os ativos disponíveis na corretora (gerenciado pelo servidor)
+            corretor.cadastrarAtivo("BTC",   350000.00);
+            corretor.cadastrarAtivo("ETH",   18500.00);
+            corretor.cadastrarAtivo("SOL",   850.00);
+            corretor.cadastrarAtivo("PETR4", 38.50);
+            corretor.cadastrarAtivo("VALE3", 65.20);
 
-            System.out.println("╔══════════════════════════════════════════╗");
-            System.out.println("║   Corretora Distribuída — Servidor RMI   ║");
-            System.out.println("╚══════════════════════════════════════════╝");
-            System.out.println("Serviço: rmi://localhost:" + PORTA + "/" + NOME_SERVICO);
-            System.out.println();
+            // 3. Cria o registro RMI na porta 1099 (porta padrão)
+            Registry registry = LocateRegistry.createRegistry(1099);
 
-            // Busca preços reais de cripto ao iniciar
-            System.out.println("[CoinGecko] Buscando preços em tempo real...");
-            Map<String, Double> precosCripto = coinGecko.buscarPrecos("BTC", "ETH", "SOL");
+            // 4. Publica o objeto com o nome "CorretorService"
+            registry.rebind("CorretorService", corretor);
 
-            corretora.adicionarAtivo("BTC",   precosCripto.getOrDefault("BTC", 350_000.0));
-            corretora.adicionarAtivo("ETH",   precosCripto.getOrDefault("ETH",  18_000.0));
-            corretora.adicionarAtivo("SOL",   precosCripto.getOrDefault("SOL",     900.0));
-            corretora.adicionarAtivo("PETR4", 38.75);
-            corretora.adicionarAtivo("VALE3", 62.10);
-            System.out.println();
-
-            // Atualiza preços de cripto a cada 30 segundos (notifica observadores automaticamente)
-            ScheduledExecutorService agendador = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "atualizador");
-                t.setDaemon(true);
-                return t;
-            });
-
-            agendador.scheduleAtFixedRate(() -> {
-                System.out.println("[Atualizador] Atualizando preços via CoinGecko...");
-                Map<String, Double> novos = coinGecko.buscarPrecos("BTC", "ETH", "SOL");
-                novos.forEach((nome, preco) -> {
-                    try {
-                        corretora.setValor(nome, preco);
-                    } catch (Exception e) {
-                        System.err.println("[Atualizador] Erro: " + e.getMessage());
-                    }
-                });
-            }, 30, 30, TimeUnit.SECONDS);
-
-            System.out.println("Servidor pronto. Aguardando conexões...");
+            System.out.println("===========================================");
+            System.out.println("  Servidor da Corretora RMI iniciado!     ");
+            System.out.println("  Porta: 1099                             ");
+            System.out.println("  Serviço: CorretorService                ");
+            System.out.println("===========================================");
 
         } catch (Exception e) {
-            System.err.println("[ERRO] Falha ao iniciar o servidor:");
+            System.err.println("[ERRO no Servidor] " + e.getMessage());
             e.printStackTrace();
         }
     }

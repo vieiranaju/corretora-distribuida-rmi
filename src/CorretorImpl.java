@@ -1,103 +1,110 @@
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 /**
- * Implementação da corretora no servidor.
+ * Implementação da Corretora (Servidor RMI).
+ * Gerencia os ativos e notifica os clientes registrados quando os preços mudam.
  *
- * - Gerencia a lista de ativos (ConcurrentHashMap para thread-safety)
- * - Implementa o padrão Observer: notifica clientes ao chamar setValor
+ * O uso de "synchronized" garante que apenas um cliente por vez acesse
+ * os recursos compartilhados (concorrência).
  */
-public class CorretorImpl extends UnicastRemoteObject implements CorretorInterface {
+public class CorretorImpl extends UnicastRemoteObject implements CorretorRemote {
 
-    // Mapa nome → Ativo (thread-safe)
-    private final ConcurrentHashMap<String, Ativo> ativos = new ConcurrentHashMap<>();
+    // Mapa de ativos: nome -> Ativo (acesso rápido por nome)
+    private Map<String, Ativo> ativos;
 
-    // Lista de observadores (clientes registrados)
-    private final List<ClienteCallback> observadores =
-            Collections.synchronizedList(new ArrayList<>());
+    // Lista de clientes registrados para receber notificações (padrão Observer)
+    private List<ClienteCallback> clientesRegistrados;
 
-    protected CorretorImpl() throws RemoteException {
+    public CorretorImpl() throws RemoteException {
         super();
+        ativos = new HashMap<>();
+        clientesRegistrados = new ArrayList<>();
     }
 
-    // ── Método auxiliar: adiciona ativo (usado pelo Servidor na inicialização) ──
-
-    public void adicionarAtivo(String nome, double valor) {
-        ativos.put(nome.toUpperCase(), new Ativo(nome.toUpperCase(), valor));
-        System.out.printf("[Servidor] Ativo cadastrado: %-8s  R$ %.2f%n", nome.toUpperCase(), valor);
+    /**
+     * Cadastra um ativo na corretora.
+     * Chamado diretamente pelo Servidor (não é método remoto).
+     */
+    public synchronized void cadastrarAtivo(String nome, double valorInicial) {
+        String nomeUpper = nome.toUpperCase();
+        ativos.put(nomeUpper, new Ativo(nomeUpper, valorInicial));
+        System.out.println("[Servidor] Ativo cadastrado: " + nomeUpper + " = R$ " + valorInicial);
     }
 
-    // ── Interface remota ────────────────────────────────────────────────────────
+    // ---------------------------------------------------------------
+    // Implementação dos métodos da interface CorretorRemote
+    // ---------------------------------------------------------------
 
     @Override
-    public List<Ativo> getListaAtivos() throws RemoteException {
-        System.out.println("[Servidor] getListaAtivos() chamado.");
+    public synchronized List<Ativo> listarAtivos() throws RemoteException {
+        System.out.println("[Servidor] Cliente solicitou lista de ativos.");
         return new ArrayList<>(ativos.values());
     }
 
     @Override
-    public double getValor(String nome) throws RemoteException {
-        Ativo ativo = ativos.get(nome.toUpperCase());
+    public synchronized double getValor(String nomeAtivo) throws RemoteException {
+        Ativo ativo = ativos.get(nomeAtivo.toUpperCase());
         if (ativo == null) {
-            throw new RemoteException("Ativo não encontrado: " + nome);
+            System.out.println("[Servidor] Ativo não encontrado: " + nomeAtivo);
+            return -1;
         }
-        System.out.printf("[Servidor] getValor(%s) = R$ %.2f%n", nome.toUpperCase(), ativo.getValor());
+        System.out.println("[Servidor] Consulta de preço: " + nomeAtivo + " = R$ " + ativo.getValor());
         return ativo.getValor();
     }
 
     @Override
-    public synchronized void setValor(String nome, double novoValor) throws RemoteException {
-        Ativo ativo = ativos.get(nome.toUpperCase());
+    public synchronized void setValor(String nomeAtivo, double novoValor) throws RemoteException {
+        Ativo ativo = ativos.get(nomeAtivo.toUpperCase());
         if (ativo == null) {
-            throw new RemoteException("Ativo não encontrado: " + nome);
-        }
-        if (novoValor < 0) {
-            throw new RemoteException("Valor não pode ser negativo.");
+            System.out.println("[Servidor] Tentativa de atualizar ativo inexistente: " + nomeAtivo);
+            return;
         }
 
         double valorAntigo = ativo.getValor();
         ativo.setValor(novoValor);
 
-        System.out.printf("[Servidor] setValor(%s): R$ %.2f → R$ %.2f%n",
-                nome.toUpperCase(), valorAntigo, novoValor);
+        System.out.println("[Servidor] Preço atualizado: " + nomeAtivo +
+                " | R$ " + valorAntigo + " -> R$ " + novoValor);
 
-        // Notifica todos os observadores em thread separada (não bloqueia o chamador)
-        final String nomeAtivo = nome.toUpperCase();
-        new Thread(() -> notificarObservadores(nomeAtivo, novoValor)).start();
+        // Notifica todos os clientes registrados (padrão Observer)
+        notificarTodos(nomeAtivo, novoValor);
     }
 
     @Override
-    public void registrarObservador(ClienteCallback observer) throws RemoteException {
-        observadores.add(observer);
-        System.out.println("[Servidor] Observador registrado. Total: " + observadores.size());
+    public synchronized void registrarCliente(ClienteCallback cliente) throws RemoteException {
+        clientesRegistrados.add(cliente);
+        System.out.println("[Servidor] Novo cliente registrado para notificações. Total: " + clientesRegistrados.size());
     }
 
     @Override
-    public void removerObservador(ClienteCallback observer) throws RemoteException {
-        observadores.remove(observer);
-        System.out.println("[Servidor] Observador removido. Total: " + observadores.size());
+    public synchronized void desregistrarCliente(ClienteCallback cliente) throws RemoteException {
+        clientesRegistrados.remove(cliente);
+        System.out.println("[Servidor] Cliente desregistrado. Total: " + clientesRegistrados.size());
     }
 
-    // ── Observer: notifica todos os clientes ───────────────────────────────────
+    // ---------------------------------------------------------------
+    // Método auxiliar: notifica todos os clientes (padrão Observer)
+    // ---------------------------------------------------------------
 
-    private void notificarObservadores(String nome, double novoValor) {
-        List<ClienteCallback> inativos = new ArrayList<>();
+    private void notificarTodos(String nomeAtivo, double novoValor) {
+        List<ClienteCallback> clientesOffline = new ArrayList<>();
 
-        synchronized (observadores) {
-            for (ClienteCallback obs : observadores) {
-                try {
-                    obs.notificar(nome, novoValor);
-                } catch (RemoteException e) {
-                    // Cliente desconectou — remove da lista
-                    System.out.println("[Servidor] Observador inativo removido.");
-                    inativos.add(obs);
-                }
+        for (ClienteCallback cliente : clientesRegistrados) {
+            try {
+                cliente.notificarMudancaPreco(nomeAtivo, novoValor);
+            } catch (RemoteException e) {
+                // Cliente caiu, marca para remover (tolerância a falhas básica)
+                System.out.println("[Servidor] Cliente offline detectado, removendo da lista.");
+                clientesOffline.add(cliente);
             }
-            observadores.removeAll(inativos);
         }
+
+        // Remove clientes que não responderam
+        clientesRegistrados.removeAll(clientesOffline);
     }
 }

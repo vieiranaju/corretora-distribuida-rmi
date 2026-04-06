@@ -1,8 +1,8 @@
 import java.io.Serializable;
 
 /**
- * Representa um ativo negociável na corretora.
- * Deve implementar Serializable para ser transmitido via RMI.
+ * Classe que representa um ativo financeiro (ação ou criptoativo).
+ * Implementa Serializable para poder ser transmitida via RMI.
  */
 public class Ativo implements Serializable {
 
@@ -16,12 +16,20 @@ public class Ativo implements Serializable {
         this.valor = valor;
     }
 
-    public String getNome()  { return nome; }
-    public double getValor() { return valor; }
-    public void   setValor(double valor) { this.valor = valor; }
+    public String getNome() {
+        return nome;
+    }
+
+    public double getValor() {
+        return valor;
+    }
+
+    public void setValor(double valor) {
+        this.valor = valor;
+    }
 
     @Override
     public String toString() {
-        return String.format("%-8s  R$ %.2f", nome, valor);
+        return String.format("%-6s -> R$ %.2f", nome, valor);
     }
 }
