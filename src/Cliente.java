@@ -2,24 +2,26 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.List;
 import java.util.Scanner;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Cliente da Corretora RMI.
  *
- * Funcionalidades:
- *  1. Listar ativos disponíveis
- *  2. Consultar preço de um ativo
- *  3. Comprar ativo (aumenta o preço)
- *  4. Vender ativo (diminui o preço)
- *  0. Sair
+ * Usa AtomicReference<CorretorRemote> como referência compartilhada entre:
+ *  - a thread principal (menu / operações)
+ *  - a thread de reconexão (disparada pelo callback quando o servidor cai)
  *
- * O cliente registra um callback para receber notificações em tempo real
- * quando qualquer outro cliente alterar o preço de um ativo.
+ * Fluxo de reconexão:
+ *  1. Servidor avisa encerramento → ClienteCallbackImpl dispara thread background
+ *  2. Thread tenta conectar a cada 3s, imprimindo cada tentativa
+ *  3. Quando conecta, atualiza corretorRef e imprime "RECONECTADO"
+ *  4. Thread principal percebe a referência válida e retoma o menu
  */
 public class Cliente {
 
-    // Percentual de variação ao comprar/vender
-    private static final double VARIACAO_PERCENTUAL = 0.05; // 5%
+    private static final double VARIACAO_PERCENTUAL = 0.05;
+    private static final int    INTERVALO_RECONEXAO_MS = 3000;
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -27,34 +29,37 @@ public class Cliente {
         System.out.print("Digite seu nome: ");
         String nomeCliente = scanner.nextLine();
 
-        CorretorRemote corretor = null;
-        ClienteCallbackImpl meuCallback = null;
+        // ----------------------------------------------------------------
+        // Estado compartilhado entre a thread principal e o callback
+        // ----------------------------------------------------------------
+        AtomicReference<CorretorRemote> corretorRef = new AtomicReference<>();
+        AtomicBoolean reconectando = new AtomicBoolean(false);
 
-        // ---------------------------------------------------------------
-        // Conecta ao servidor (com tolerância a falhas: tenta 3 vezes)
-        // ---------------------------------------------------------------
-        corretor = conectarComRetentativa(nomeCliente);
-        if (corretor == null) {
-            System.out.println("Não foi possível conectar ao servidor. Encerrando.");
+        // ----------------------------------------------------------------
+        // Cria o callback passando o estado compartilhado
+        // ----------------------------------------------------------------
+        ClienteCallbackImpl meuCallback;
+        try {
+            meuCallback = new ClienteCallbackImpl(nomeCliente, corretorRef, reconectando);
+        } catch (Exception e) {
+            System.out.println("Erro ao criar callback: " + e.getMessage());
             return;
         }
 
-        // ---------------------------------------------------------------
-        // Registra o callback para receber notificações do servidor
-        // ---------------------------------------------------------------
-        try {
-            meuCallback = new ClienteCallbackImpl(nomeCliente);
-            corretor.registrarCliente(meuCallback);
-            System.out.println("[" + nomeCliente + "] Registrado para receber notificações em tempo real!");
-        } catch (Exception e) {
-            System.out.println("Erro ao registrar callback: " + e.getMessage());
-        }
+        // ----------------------------------------------------------------
+        // Conecta ao servidor — tenta indefinidamente até conseguir
+        // ----------------------------------------------------------------
+        conectarERegistrar(nomeCliente, corretorRef, meuCallback);
 
-        // ---------------------------------------------------------------
+        // ----------------------------------------------------------------
         // Menu principal
-        // ---------------------------------------------------------------
+        // ----------------------------------------------------------------
         boolean rodando = true;
         while (rodando) {
+
+            // Se reconexão está em curso, aguarda silenciosamente
+            aguardarConexao(corretorRef);
+
             System.out.println("\n========== CORRETORA RMI ==========");
             System.out.println("1. Listar ativos");
             System.out.println("2. Consultar preço de um ativo");
@@ -65,7 +70,13 @@ public class Cliente {
 
             String opcao = scanner.nextLine().trim();
 
+            // Se o servidor caiu enquanto o usuário digitava, aguarda reconexão
+            if (corretorRef.get() == null) {
+                aguardarConexao(corretorRef);
+            }
+
             try {
+                CorretorRemote corretor = corretorRef.get();
                 switch (opcao) {
                     case "1":
                         listarAtivos(corretor);
@@ -73,48 +84,45 @@ public class Cliente {
 
                     case "2":
                         System.out.print("Nome do ativo: ");
-                        String nomeConsulta = scanner.nextLine().trim().toUpperCase();
-                        consultarPreco(corretor, nomeConsulta);
+                        consultarPreco(corretor, scanner.nextLine().trim().toUpperCase());
                         break;
 
                     case "3":
                         System.out.print("Nome do ativo para COMPRAR: ");
-                        String nomeCompra = scanner.nextLine().trim().toUpperCase();
-                        comprarAtivo(corretor, nomeCompra);
+                        comprarAtivo(corretor, scanner.nextLine().trim().toUpperCase());
                         break;
 
                     case "4":
                         System.out.print("Nome do ativo para VENDER: ");
-                        String nomeVenda = scanner.nextLine().trim().toUpperCase();
-                        venderAtivo(corretor, nomeVenda);
+                        venderAtivo(corretor, scanner.nextLine().trim().toUpperCase());
                         break;
 
                     case "0":
                         rodando = false;
                         break;
 
+                    case "":
+                        break; // relança o menu sem mensagem de erro
+
                     default:
                         System.out.println("Opção inválida!");
                 }
 
             } catch (Exception e) {
-                System.out.println("[ERRO] " + e.getMessage());
-
-                // Tolerância a falhas: tenta reconectar se o servidor caiu
-                System.out.println("Tentando reconectar ao servidor...");
-                corretor = conectarComRetentativa(nomeCliente);
-                if (corretor == null) {
-                    System.out.println("Servidor indisponível. Encerrando.");
-                    rodando = false;
-                }
+                // Servidor caiu sem aviso prévio (crash) — inicia reconexão manual
+                System.out.println("\n*** ATENÇÃO: SERVIDOR FORA DO AR! ***");
+                System.out.println("Tentando reconectar automaticamente...");
+                meuCallback.iniciarReconexaoBackground();
+                aguardarConexao(corretorRef);
             }
         }
 
-        // ---------------------------------------------------------------
+        // ----------------------------------------------------------------
         // Ao sair, desregistra o callback
-        // ---------------------------------------------------------------
+        // ----------------------------------------------------------------
         try {
-            if (corretor != null && meuCallback != null) {
+            CorretorRemote corretor = corretorRef.get();
+            if (corretor != null) {
                 corretor.desregistrarCliente(meuCallback);
             }
         } catch (Exception e) {
@@ -125,9 +133,9 @@ public class Cliente {
         scanner.close();
     }
 
-    // ---------------------------------------------------------------
-    // Métodos auxiliares
-    // ---------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Operações
+    // ----------------------------------------------------------------
 
     private static void listarAtivos(CorretorRemote corretor) throws Exception {
         List<Ativo> ativos = corretor.listarAtivos();
@@ -148,11 +156,7 @@ public class Cliente {
 
     private static void comprarAtivo(CorretorRemote corretor, String nome) throws Exception {
         double valorAtual = corretor.getValor(nome);
-        if (valorAtual < 0) {
-            System.out.println("Ativo '" + nome + "' não encontrado.");
-            return;
-        }
-        // Comprar faz o preço subir
+        if (valorAtual < 0) { System.out.println("Ativo '" + nome + "' não encontrado."); return; }
         double novoValor = valorAtual * (1 + VARIACAO_PERCENTUAL);
         corretor.setValor(nome, novoValor);
         System.out.printf("COMPRA realizada! %s: R$ %.2f -> R$ %.2f%n", nome, valorAtual, novoValor);
@@ -160,40 +164,53 @@ public class Cliente {
 
     private static void venderAtivo(CorretorRemote corretor, String nome) throws Exception {
         double valorAtual = corretor.getValor(nome);
-        if (valorAtual < 0) {
-            System.out.println("Ativo '" + nome + "' não encontrado.");
-            return;
-        }
-        // Vender faz o preço cair
+        if (valorAtual < 0) { System.out.println("Ativo '" + nome + "' não encontrado."); return; }
         double novoValor = valorAtual * (1 - VARIACAO_PERCENTUAL);
         corretor.setValor(nome, novoValor);
         System.out.printf("VENDA realizada! %s: R$ %.2f -> R$ %.2f%n", nome, valorAtual, novoValor);
     }
 
+    // ----------------------------------------------------------------
+    // Auxiliares de conexão
+    // ----------------------------------------------------------------
+
     /**
-     * Tenta conectar ao servidor até 3 vezes antes de desistir.
-     * Implementa tolerância a falhas básica.
+     * Bloqueia a thread principal até a referência do corretor estar válida.
      */
-    private static CorretorRemote conectarComRetentativa(String nomeCliente) {
-        int tentativas = 3;
-        while (tentativas > 0) {
+    private static void aguardarConexao(AtomicReference<CorretorRemote> corretorRef) {
+        while (corretorRef.get() == null) {
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
+    /**
+     * Conexão inicial: tenta indefinidamente até conseguir conectar e registrar o callback.
+     */
+    private static void conectarERegistrar(String nomeCliente,
+                                           AtomicReference<CorretorRemote> corretorRef,
+                                           ClienteCallbackImpl callback) {
+        while (true) {
             try {
                 Registry registry = LocateRegistry.getRegistry("localhost", 1099);
                 CorretorRemote corretor = (CorretorRemote) registry.lookup("CorretorService");
-                System.out.println("[" + nomeCliente + "] Conectado ao servidor com sucesso!");
-                return corretor;
+                corretor.registrarCliente(callback);
+                corretorRef.set(corretor);
+                System.out.println("[" + nomeCliente + "] Conectado e registrado com sucesso!");
+                return;
             } catch (Exception e) {
-                tentativas--;
-                System.out.println("Falha na conexão. Tentativas restantes: " + tentativas);
-                if (tentativas > 0) {
-                    try {
-                        Thread.sleep(2000); // aguarda 2s antes de tentar novamente
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                    }
+                System.out.println("Servidor indisponível. Tentando novamente em "
+                        + (INTERVALO_RECONEXAO_MS / 1000) + "s...");
+                try {
+                    Thread.sleep(INTERVALO_RECONEXAO_MS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
                 }
             }
         }
-        return null;
     }
 }

@@ -4,6 +4,9 @@ import java.rmi.registry.Registry;
 /**
  * Ponto de entrada do Servidor RMI da Corretora.
  * Cria o registro RMI e publica o objeto remoto.
+ *
+ * Ao encerrar (Ctrl+C ou qualquer shutdown), notifica todos os
+ * clientes conectados imediatamente via callback.
  */
 public class Servidor {
 
@@ -25,10 +28,18 @@ public class Servidor {
             // 4. Publica o objeto com o nome "CorretorService"
             registry.rebind("CorretorService", corretor);
 
+            // 5. ShutdownHook: avisa TODOS os clientes antes de encerrar
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                System.out.println("\n[Servidor] Encerrando... notificando clientes conectados.");
+                corretor.notificarClientesEncerramento();
+                System.out.println("[Servidor] Servidor encerrado.");
+            }));
+
             System.out.println("===========================================");
             System.out.println("  Servidor da Corretora RMI iniciado!     ");
             System.out.println("  Porta: 1099                             ");
             System.out.println("  Serviço: CorretorService                ");
+            System.out.println("  (Ctrl+C para encerrar)                  ");
             System.out.println("===========================================");
 
         } catch (Exception e) {

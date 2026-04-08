@@ -88,7 +88,7 @@ public class CorretorImpl extends UnicastRemoteObject implements CorretorRemote 
     }
 
     // ---------------------------------------------------------------
-    // Método auxiliar: notifica todos os clientes (padrão Observer)
+    // Métodos auxiliares: notificações para clientes (padrão Observer)
     // ---------------------------------------------------------------
 
     private void notificarTodos(String nomeAtivo, double novoValor) {
@@ -106,5 +106,21 @@ public class CorretorImpl extends UnicastRemoteObject implements CorretorRemote 
 
         // Remove clientes que não responderam
         clientesRegistrados.removeAll(clientesOffline);
+    }
+
+    /**
+     * Chamado pelo ShutdownHook do Servidor antes de encerrar a JVM.
+     * Avisa imediatamente todos os clientes registrados que o servidor está saindo.
+     */
+    public synchronized void notificarClientesEncerramento() {
+        System.out.println("[Servidor] Notificando " + clientesRegistrados.size() + " cliente(s) sobre encerramento.");
+        for (ClienteCallback cliente : clientesRegistrados) {
+            try {
+                cliente.notificarEncerramento();
+            } catch (RemoteException e) {
+                // Cliente já estava offline, sem problema
+                System.out.println("[Servidor] Cliente não respondeu ao aviso de encerramento.");
+            }
+        }
     }
 }
