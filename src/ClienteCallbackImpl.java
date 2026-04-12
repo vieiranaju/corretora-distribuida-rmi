@@ -21,6 +21,10 @@ public class ClienteCallbackImpl extends UnicastRemoteObject implements ClienteC
 
     private static final int INTERVALO_RECONEXAO_MS = 3000;
 
+    // Cores ANSI
+    private static final String ANSI_RESET = "\u001B[0m";
+    private static final String ANSI_RED   = "\u001B[31m";
+
     private final String nomeCliente;
     private final AtomicReference<CorretorRemote> corretorRef;
     private final AtomicBoolean reconectando;
@@ -45,10 +49,10 @@ public class ClienteCallbackImpl extends UnicastRemoteObject implements ClienteC
     /** Chamado pelo servidor ANTES de encerrar — avisa imediatamente e dispara reconexão. */
     @Override
     public void notificarEncerramento() throws RemoteException {
-        System.out.println("\n╔══════════════════════════════════════════╗");
+        System.out.println(ANSI_RED + "\n╔══════════════════════════════════════════╗");
         System.out.println("║  ⚠  SERVIDOR ENCERRADO!                 ║");
         System.out.println("║  Tentando reconectar automaticamente... ║");
-        System.out.println("╚══════════════════════════════════════════╝");
+        System.out.println("╚══════════════════════════════════════════╝" + ANSI_RESET);
         iniciarReconexaoBackground();
     }
 
@@ -69,8 +73,8 @@ public class ClienteCallbackImpl extends UnicastRemoteObject implements ClienteC
     private void loopReconexao() {
         try {
             while (true) {
-                System.out.println("Servidor indisponível. Tentando novamente em "
-                        + (INTERVALO_RECONEXAO_MS / 1000) + "s...");
+                System.out.println(ANSI_RED + "Servidor indisponível. Tentando novamente em "
+                        + (INTERVALO_RECONEXAO_MS / 1000) + "s..." + ANSI_RESET);
                 try {
                     Thread.sleep(INTERVALO_RECONEXAO_MS);
                 } catch (InterruptedException ie) {

@@ -23,6 +23,12 @@ public class Cliente {
     private static final double VARIACAO_PERCENTUAL = 0.05;
     private static final int    INTERVALO_RECONEXAO_MS = 3000;
 
+    // Cores ANSI
+    private static final String ANSI_RESET  = "\u001B[0m";
+    private static final String ANSI_RED    = "\u001B[31m";
+    private static final String ANSI_GREEN  = "\u001B[32m";
+    private static final String ANSI_YELLOW = "\u001B[33m";
+
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
@@ -110,8 +116,8 @@ public class Cliente {
 
             } catch (Exception e) {
                 // Servidor caiu sem aviso prévio (crash) — inicia reconexão manual
-                System.out.println("\n*** ATENÇÃO: SERVIDOR FORA DO AR! ***");
-                System.out.println("Tentando reconectar automaticamente...");
+                System.out.println(ANSI_RED + "\n*** ATENÇÃO: SERVIDOR FORA DO AR! ***" + ANSI_RESET);
+                System.out.println(ANSI_RED + "Tentando reconectar automaticamente..." + ANSI_RESET);
                 meuCallback.iniciarReconexaoBackground();
                 aguardarConexao(corretorRef);
             }
@@ -159,7 +165,7 @@ public class Cliente {
         if (valorAtual < 0) { System.out.println("Ativo '" + nome + "' não encontrado."); return; }
         double novoValor = valorAtual * (1 + VARIACAO_PERCENTUAL);
         corretor.setValor(nome, novoValor);
-        System.out.printf("COMPRA realizada! %s: R$ %.2f -> R$ %.2f%n", nome, valorAtual, novoValor);
+        System.out.printf(ANSI_GREEN + "COMPRA realizada! %s: R$ %.2f -> R$ %.2f%n" + ANSI_RESET, nome, valorAtual, novoValor);
     }
 
     private static void venderAtivo(CorretorRemote corretor, String nome) throws Exception {
@@ -167,7 +173,7 @@ public class Cliente {
         if (valorAtual < 0) { System.out.println("Ativo '" + nome + "' não encontrado."); return; }
         double novoValor = valorAtual * (1 - VARIACAO_PERCENTUAL);
         corretor.setValor(nome, novoValor);
-        System.out.printf("VENDA realizada! %s: R$ %.2f -> R$ %.2f%n", nome, valorAtual, novoValor);
+        System.out.printf(ANSI_YELLOW + "VENDA realizada! %s: R$ %.2f -> R$ %.2f%n" + ANSI_RESET, nome, valorAtual, novoValor);
     }
 
     // ----------------------------------------------------------------
@@ -203,8 +209,8 @@ public class Cliente {
                 System.out.println("[" + nomeCliente + "] Conectado e registrado com sucesso!");
                 return;
             } catch (Exception e) {
-                System.out.println("Servidor indisponível. Tentando novamente em "
-                        + (INTERVALO_RECONEXAO_MS / 1000) + "s...");
+                System.out.println(ANSI_RED + "Servidor indisponível. Tentando novamente em "
+                        + (INTERVALO_RECONEXAO_MS / 1000) + "s..." + ANSI_RESET);
                 try {
                     Thread.sleep(INTERVALO_RECONEXAO_MS);
                 } catch (InterruptedException ie) {
