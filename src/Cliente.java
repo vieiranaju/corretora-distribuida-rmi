@@ -6,22 +6,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Cliente da Corretora RMI.
- *
- * Usa AtomicReference<CorretorRemote> como referência compartilhada entre:
- *  - a thread principal (menu / operações)
- *  - a thread de reconexão (disparada pelo callback quando o servidor cai)
- *
- * Fluxo de reconexão:
- *  1. Servidor avisa encerramento → ClienteCallbackImpl dispara thread background
- *  2. Thread tenta conectar a cada 3s, imprimindo cada tentativa
- *  3. Quando conecta, atualiza corretorRef e imprime "RECONECTADO"
- *  4. Thread principal percebe a referência válida e retoma o menu
+ * Cliente da corretora RMI
  */
 public class Cliente {
 
     private static final double VARIACAO_PERCENTUAL = 0.05;
     private static final int    INTERVALO_RECONEXAO_MS = 3000;
+
+    // Cores ANSI
+    private static final String ANSI_RESET  = "\u001B[0m";
+    private static final String ANSI_RED    = "\u001B[31m";
+    private static final String ANSI_GREEN  = "\u001B[32m";
+    private static final String ANSI_YELLOW = "\u001B[33m";
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -29,15 +25,11 @@ public class Cliente {
         System.out.print("Digite seu nome: ");
         String nomeCliente = scanner.nextLine();
 
-        // ----------------------------------------------------------------
-        // Estado compartilhado entre a thread principal e o callback
-        // ----------------------------------------------------------------
+        // thread principal e o callback
         AtomicReference<CorretorRemote> corretorRef = new AtomicReference<>();
         AtomicBoolean reconectando = new AtomicBoolean(false);
 
-        // ----------------------------------------------------------------
-        // Cria o callback passando o estado compartilhado
-        // ----------------------------------------------------------------
+        // callback
         ClienteCallbackImpl meuCallback;
         try {
             meuCallback = new ClienteCallbackImpl(nomeCliente, corretorRef, reconectando);
@@ -46,18 +38,13 @@ public class Cliente {
             return;
         }
 
-        // ----------------------------------------------------------------
-        // Conecta ao servidor — tenta indefinidamente até conseguir
-        // ----------------------------------------------------------------
+        // conecta ao servidor
         conectarERegistrar(nomeCliente, corretorRef, meuCallback);
 
-        // ----------------------------------------------------------------
-        // Menu principal
-        // ----------------------------------------------------------------
+        // menu
         boolean rodando = true;
         while (rodando) {
 
-            // Se reconexão está em curso, aguarda silenciosamente
             aguardarConexao(corretorRef);
 
             System.out.println("\n========== CORRETORA RMI ==========");
@@ -70,7 +57,7 @@ public class Cliente {
 
             String opcao = scanner.nextLine().trim();
 
-            // Se o servidor caiu enquanto o usuário digitava, aguarda reconexão
+            // aguarda reconexão
             if (corretorRef.get() == null) {
                 aguardarConexao(corretorRef);
             }
@@ -109,17 +96,15 @@ public class Cliente {
                 }
 
             } catch (Exception e) {
-                // Servidor caiu sem aviso prévio (crash) — inicia reconexão manual
-                System.out.println("\n*** ATENÇÃO: SERVIDOR FORA DO AR! ***");
-                System.out.println("Tentando reconectar automaticamente...");
+                // crash, inicia reconexão manual
+                System.out.println(ANSI_RED + "\n*** ATENÇÃO: SERVIDOR FORA DO AR! ***" + ANSI_RESET);
+                System.out.println(ANSI_RED + "Tentando reconectar automaticamente..." + ANSI_RESET);
                 meuCallback.iniciarReconexaoBackground();
                 aguardarConexao(corretorRef);
             }
         }
 
-        // ----------------------------------------------------------------
-        // Ao sair, desregistra o callback
-        // ----------------------------------------------------------------
+        // desregistra o callback
         try {
             CorretorRemote corretor = corretorRef.get();
             if (corretor != null) {
@@ -133,10 +118,7 @@ public class Cliente {
         scanner.close();
     }
 
-    // ----------------------------------------------------------------
     // Operações
-    // ----------------------------------------------------------------
-
     private static void listarAtivos(CorretorRemote corretor) throws Exception {
         List<Ativo> ativos = corretor.listarAtivos();
         System.out.println("\n--- Ativos disponíveis ---");
@@ -159,7 +141,7 @@ public class Cliente {
         if (valorAtual < 0) { System.out.println("Ativo '" + nome + "' não encontrado."); return; }
         double novoValor = valorAtual * (1 + VARIACAO_PERCENTUAL);
         corretor.setValor(nome, novoValor);
-        System.out.printf("COMPRA realizada! %s: R$ %.2f -> R$ %.2f%n", nome, valorAtual, novoValor);
+        System.out.printf(ANSI_GREEN + "COMPRA realizada! %s: R$ %.2f -> R$ %.2f%n" + ANSI_RESET, nome, valorAtual, novoValor);
     }
 
     private static void venderAtivo(CorretorRemote corretor, String nome) throws Exception {
@@ -167,16 +149,10 @@ public class Cliente {
         if (valorAtual < 0) { System.out.println("Ativo '" + nome + "' não encontrado."); return; }
         double novoValor = valorAtual * (1 - VARIACAO_PERCENTUAL);
         corretor.setValor(nome, novoValor);
-        System.out.printf("VENDA realizada! %s: R$ %.2f -> R$ %.2f%n", nome, valorAtual, novoValor);
+        System.out.printf(ANSI_YELLOW + "VENDA realizada! %s: R$ %.2f -> R$ %.2f%n" + ANSI_RESET, nome, valorAtual, novoValor);
     }
 
-    // ----------------------------------------------------------------
-    // Auxiliares de conexão
-    // ----------------------------------------------------------------
-
-    /**
-     * Bloqueia a thread principal até a referência do corretor estar válida.
-     */
+    // Bloqueia a thread principal até a referência do corretor estar válida.
     private static void aguardarConexao(AtomicReference<CorretorRemote> corretorRef) {
         while (corretorRef.get() == null) {
             try {
@@ -188,9 +164,7 @@ public class Cliente {
         }
     }
 
-    /**
-     * Conexão inicial: tenta indefinidamente até conseguir conectar e registrar o callback.
-     */
+    // tenta conectar indefinidamente até conseguir conectar e registrar o callback.
     private static void conectarERegistrar(String nomeCliente,
                                            AtomicReference<CorretorRemote> corretorRef,
                                            ClienteCallbackImpl callback) {
@@ -203,8 +177,8 @@ public class Cliente {
                 System.out.println("[" + nomeCliente + "] Conectado e registrado com sucesso!");
                 return;
             } catch (Exception e) {
-                System.out.println("Servidor indisponível. Tentando novamente em "
-                        + (INTERVALO_RECONEXAO_MS / 1000) + "s...");
+                System.out.println(ANSI_RED + "Servidor indisponível. Tentando novamente em "
+                        + (INTERVALO_RECONEXAO_MS / 1000) + "s..." + ANSI_RESET);
                 try {
                     Thread.sleep(INTERVALO_RECONEXAO_MS);
                 } catch (InterruptedException ie) {
