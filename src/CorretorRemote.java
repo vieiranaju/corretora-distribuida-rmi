@@ -6,6 +6,9 @@ import java.util.List;
 // Define todos os serviços disponíveis para os clientes via RMI
 public interface CorretorRemote extends Remote {
 
+    // Cadastra um novo ativo com nome e valor inicial
+    void cadastrarAtivo(String nome, double valorInicial) throws RemoteException;
+
     // Retorna a lista de todos os ativos cadastrados na corretora
     List<Ativo> listarAtivos() throws RemoteException;
 

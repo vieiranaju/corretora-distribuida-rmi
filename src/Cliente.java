@@ -52,6 +52,7 @@ public class Cliente {
             System.out.println("2. Consultar preço de um ativo");
             System.out.println("3. Comprar ativo (preço sobe 5%)");
             System.out.println("4. Vender ativo (preço cai 5%)");
+            System.out.println("5. Cadastrar novo ativo");
             System.out.println("0. Sair");
             System.out.print("Escolha uma opção: ");
 
@@ -82,6 +83,14 @@ public class Cliente {
                     case "4":
                         System.out.print("Nome do ativo para VENDER: ");
                         venderAtivo(corretor, scanner.nextLine().trim().toUpperCase());
+                        break;
+
+                    case "5":
+                        System.out.print("Nome do novo ativo: ");
+                        String novoNome = scanner.nextLine().trim().toUpperCase();
+                        System.out.print("Valor inicial do ativo: R$ ");
+                        double valorInicial = Double.parseDouble(scanner.nextLine().trim());
+                        cadastrarAtivo(corretor, novoNome, valorInicial);
                         break;
 
                     case "0":
@@ -150,6 +159,11 @@ public class Cliente {
         double novoValor = valorAtual * (1 - VARIACAO_PERCENTUAL);
         corretor.setValor(nome, novoValor);
         System.out.printf(ANSI_YELLOW + "VENDA realizada! %s: R$ %.2f -> R$ %.2f%n" + ANSI_RESET, nome, valorAtual, novoValor);
+    }
+
+    private static void cadastrarAtivo(CorretorRemote corretor, String nome, double valorInicial) throws Exception {
+        corretor.cadastrarAtivo(nome, valorInicial);
+        System.out.printf(ANSI_GREEN + "Ativo '%s' cadastrado com valor inicial R$ %.2f%n" + ANSI_RESET, nome, valorInicial);
     }
 
     // Bloqueia a thread principal até a referência do corretor estar válida.

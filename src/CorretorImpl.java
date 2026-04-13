@@ -21,7 +21,7 @@ public class CorretorImpl extends UnicastRemoteObject implements CorretorRemote 
     }
 
     // Cadastra um ativo
-    public synchronized void cadastrarAtivo(String nome, double valorInicial) {
+    public synchronized void cadastrarAtivo(String nome, double valorInicial) throws RemoteException {
         String nomeUpper = nome.toUpperCase();
         ativos.put(nomeUpper, new Ativo(nomeUpper, valorInicial));
         System.out.println("[Servidor] Ativo cadastrado: " + nomeUpper + " = R$ " + valorInicial);
