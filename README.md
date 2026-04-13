@@ -2,7 +2,7 @@
 
 Este projeto consiste em um sistema de corretora de ativos distribuído utilizando **Java RMI (Remote Method Invocation)**. Ele permite que múltiplos clientes se conectem a um servidor central para listar ativos, consultar preços e realizar operações de compra e venda com atualizações em tempo real.
 
-## 🚀 Funcionalidades
+## Funcionalidades
 
 - **Listagem de Ativos:** Visualização de todos os ativos disponíveis (ações, criptos, etc).
 - **Consulta de Preços:** Verificação do valor atual de um ativo específico.
@@ -16,12 +16,12 @@ Este projeto consiste em um sistema de corretora de ativos distribuído utilizan
   - `AMARELO`: Confirmação de venda.
   - `VERMELHO`: Alertas de erro e perda de conexão.
 
-## 📋 Pré-requisitos
+## Pré-requisitos
 
 - **Java JDK 21** ou superior instalado.
 - Terminal compatível com **ANSI escape codes** (VS Code, Windows Terminal, PowerShell, Linux/Mac terminal) para visualizar as cores.
 
-## 🛠️ Como Compilar
+## Como Compilar
 
 No diretório raiz do projeto, execute o comando abaixo para compilar todos os arquivos para a pasta `out`:
 
@@ -29,7 +29,7 @@ No diretório raiz do projeto, execute o comando abaixo para compilar todos os a
 javac -d out src/*.java
 ```
 
-## 🏃 Como Executar
+## Como Executar
 
 ### 1. Iniciar o Servidor
 O servidor cria o registro RMI na porta padrão (1099) e publica o serviço.
@@ -45,7 +45,7 @@ Você pode abrir múltiplos terminais para simular diferentes usuários.
 java -cp out Cliente
 ```
 
-## 🏗️ Estrutura do Projeto
+## Estrutura do Projeto
 
 - `src/Ativo.java`: Modelo de dados dos ativos.
 - `src/CorretorRemote.java`: Interface RMI com os serviços disponíveis.
